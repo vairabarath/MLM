@@ -4,7 +4,6 @@ import Layout from "./components/layout/Layout";
 import Personal from "./pages/Personal";
 import LevelStatus from "./pages/LevelStatus";
 import GenealogyTree from "./pages/GenealogyTree";
-import DemoGenealogyTree from "./pages/DemoGenealogyTree";
 
 // Authentication components
 import MultiWallet from "./components/auth/MultiWallet";
@@ -42,7 +41,7 @@ const App: React.FC = () => {
           <Route path="personal" element={<Personal />} />
           <Route path="level-status" element={<LevelStatus />} />
           <Route path="genealogy-tree" element={<GenealogyTree />} />
-          <Route path="demo-geno" element={<DemoGenealogyTree />} />
+          {/* <Route path="demo-geno" element={<DemoGenealogyTree />} /> */}
         </Route>
       </Routes>
     </Router>

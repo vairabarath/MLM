@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   User as UserIcon,
   Loader2,
@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useMLMData } from "../hooks/useMLMData";
 import ReferralLink from "../components/common/ReferralLink";
+import { useWeb3 } from "../hooks/useWeb3";
 
 // Define the User type based on the data structure
 interface User {
@@ -17,8 +18,6 @@ interface User {
   referrals?: User[];
 }
 
-
-
 const formatAddress = (address: string) => {
   return `${address.substring(0, 6)}...${address.substring(
     address.length - 4
@@ -26,14 +25,30 @@ const formatAddress = (address: string) => {
 };
 
 // TreeNode component for rendering each node in the tree
-const TreeNode: React.FC<{ user: User; level: number; isLast: boolean; parentHasButton?: boolean }> = ({
+const TreeNode: React.FC<{
+  user: User;
+  level: number;
+  isLast: boolean;
+  parentHasButton?: boolean;
+  onLoadChildren: (userAddress: string) => Promise<User[]>;
+  updateUserReferrals: (userAddress: string, referrals: User[]) => void;
+}> = ({
   user,
   level,
   isLast,
   parentHasButton = false,
+  onLoadChildren,
+  updateUserReferrals,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(level < 2); // Expand only root level by default for performance
-  const hasChildren = user.referrals && user.referrals.length > 0;
+  // Root level (level 0) starts expanded to show Level 1, others start collapsed
+  const [isExpanded, setIsExpanded] = useState(level === 0);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // referrals === undefined means not yet fetched
+  // referrals === [] means fetched but no children
+  // referrals with items means has children
+  const hasChildren = user.referrals === undefined || (user.referrals && user.referrals.length > 0);
+  const childrenFetched = user.referrals !== undefined;
 
   // Responsive spacing - smaller on mobile
   const getSpacing = () => {
@@ -46,24 +61,47 @@ const TreeNode: React.FC<{ user: User; level: number; isLast: boolean; parentHas
 
   const spacing = getSpacing();
 
+  const handleExpandToggle = async () => {
+    // If collapsing, just toggle
+    if (isExpanded) {
+      setIsExpanded(false);
+      return;
+    }
+
+    // If expanding and children not yet fetched, fetch them
+    if (!childrenFetched) {
+      setIsLoading(true);
+      try {
+        const children = await onLoadChildren(user.address);
+        updateUserReferrals(user.address, children);
+      } catch (err) {
+        console.error("Failed to load children:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    setIsExpanded(true);
+  };
+
   return (
     <div className="relative">
       {/* Tree lines for non-root nodes */}
       {level > 0 && (
         <>
           {/* Vertical line connecting to parent's button */}
-          <div 
+          <div
             className={`absolute top-0 w-px bg-gray-400 ${
               isLast ? 'h-6' : 'h-full'
             }`}
-            style={{ 
-              left: `${(level - 1) * spacing.levelSpacing + spacing.lineOffset}px` 
+            style={{
+              left: `${(level - 1) * spacing.levelSpacing + spacing.lineOffset}px`
             }}
           />
           {/* Horizontal line to current node */}
-          <div 
+          <div
             className="absolute top-6 h-px bg-gray-400"
-            style={{ 
+            style={{
               left: `${(level - 1) * spacing.levelSpacing + spacing.lineOffset}px`,
               width: spacing.horizontalLineWidth
             }}
@@ -71,25 +109,28 @@ const TreeNode: React.FC<{ user: User; level: number; isLast: boolean; parentHas
         </>
       )}
 
-      <div 
+      <div
         className="flex items-center py-1"
         style={{ paddingLeft: level > 0 ? `${level * spacing.levelSpacing}px` : '0px' }}
       >
         {/* Expand/Collapse button */}
         {hasChildren && (
           <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="mr-1 sm:mr-2 p-1 rounded hover:bg-slate-600 transition-colors duration-200 relative z-10"
+            onClick={handleExpandToggle}
+            disabled={isLoading}
+            className="mr-1 sm:mr-2 p-1 rounded hover:bg-slate-600 transition-colors duration-200 relative z-10 disabled:opacity-50"
             aria-label={isExpanded ? 'Collapse' : 'Expand'}
           >
-            {isExpanded ? (
+            {isLoading ? (
+              <Loader2 size={12} className="text-gray-400 sm:w-4 sm:h-4 animate-spin" />
+            ) : isExpanded ? (
               <MinusSquare size={12} className="text-gray-400 sm:w-4 sm:h-4" />
             ) : (
               <PlusSquare size={12} className="text-gray-400 sm:w-4 sm:h-4" />
             )}
           </button>
         )}
-        
+
         {/* User node - responsive sizing */}
         <div
           className={`flex items-center px-2 sm:px-3 py-1 sm:py-2 rounded-lg ${
@@ -113,15 +154,17 @@ const TreeNode: React.FC<{ user: User; level: number; isLast: boolean; parentHas
       </div>
 
       {/* Children nodes - limit to 10 levels max */}
-      {isExpanded && hasChildren && level < 10 && (
+      {isExpanded && childrenFetched && user.referrals && user.referrals.length > 0 && level < 10 && (
         <div className="relative">
-          {user.referrals?.map((child, index) => (
+          {user.referrals.map((child, index) => (
             <TreeNode
-              key={child.id}
+              key={child.address}
               user={child}
               level={level + 1}
               isLast={index === user.referrals!.length - 1}
               parentHasButton={hasChildren}
+              onLoadChildren={onLoadChildren}
+              updateUserReferrals={updateUserReferrals}
             />
           ))}
         </div>
@@ -132,9 +175,47 @@ const TreeNode: React.FC<{ user: User; level: number; isLast: boolean; parentHas
 
 const GenealogyTree: React.FC = () => {
   const { data, loading, error } = useMLMData();
+  const web3Context = useWeb3();
+  const [genealogyData, setGenealogyData] = useState<User | null>(null);
 
-  // Use real data from smart contract
-  const genealogyData = data?.genealogy;
+  // Initialize genealogy data from useMLMData
+  useEffect(() => {
+    if (data?.genealogy) {
+      setGenealogyData(data.genealogy);
+    }
+  }, [data?.genealogy]);
+
+  // Function to load children for a specific user
+  const loadChildren = async (userAddress: string): Promise<User[]> => {
+    if (!web3Context?.fetchUserReferrals) {
+      throw new Error("Web3 context not available");
+    }
+
+    const children = await web3Context.fetchUserReferrals(userAddress);
+    return children;
+  };
+
+  // Function to update a user's referrals in the tree
+  const updateUserReferrals = (userAddress: string, referrals: User[]) => {
+    if (!genealogyData) return;
+
+    const updateNode = (node: User): User => {
+      if (node.address === userAddress) {
+        return { ...node, referrals };
+      }
+
+      if (node.referrals && node.referrals.length > 0) {
+        return {
+          ...node,
+          referrals: node.referrals.map(child => updateNode(child))
+        };
+      }
+
+      return node;
+    };
+
+    setGenealogyData(updateNode(genealogyData));
+  };
 
   if (loading) {
     return (
@@ -147,7 +228,7 @@ const GenealogyTree: React.FC = () => {
     );
   }
 
-  if (error || !data?.genealogy) {
+  if (error || !genealogyData) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
@@ -185,7 +266,14 @@ const GenealogyTree: React.FC = () => {
         {/* Tree container with horizontal scroll on mobile */}
         <div className="min-w-max">
           {genealogyData ? (
-            <TreeNode user={genealogyData} level={0} isLast={true} parentHasButton={false} />
+            <TreeNode
+              user={genealogyData}
+              level={0}
+              isLast={true}
+              parentHasButton={false}
+              onLoadChildren={loadChildren}
+              updateUserReferrals={updateUserReferrals}
+            />
           ) : (
             <div className="text-center py-8">
               <UserIcon className="w-12 h-12 sm:w-16 sm:h-16 text-gray-500 mx-auto mb-4" />

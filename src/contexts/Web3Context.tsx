@@ -106,6 +106,7 @@ interface Web3ContextType {
   } | null>;
   getIncomeDash: () => Promise<IncomeData | null>;
   getGeneome: () => Promise<GenealogyNode | null>;
+  fetchUserReferrals: (address: string) => Promise<GenealogyNode[]>;
   getTeamBonus: () => Promise<{ teamBonus: number } | null>;
   getDirectRefIncome: () => Promise<{
     dirRefCnt: number;
@@ -926,7 +927,7 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
         referrals: [],
       };
 
-      // Get referrals using getUserReferrals method instead of userData.referral
+      // Only fetch level 1 referrals initially
       let level1Referrals: string[] = [];
       try {
         level1Referrals = await contract.methods
@@ -949,88 +950,11 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
           const data = await contract.methods.users(addr).call();
           if (!data.isExist) return null;
 
-          // Get level 2 referrals for this user
-          let level2Referrals: string[] = [];
-          try {
-            level2Referrals = await contract.methods
-              .getUserReferrals(addr)
-              .call();
-          } catch (err) {
-            try {
-              level2Referrals = await contract.methods
-                .viewUserReferral(addr)
-                .call();
-            } catch (err2) {
-              level2Referrals = [];
-            }
-          }
-
-          const level2Promises = level2Referrals.map(
-            async (level2Addr: string) => {
-              try {
-                const level2Data = await contract.methods
-                  .users(level2Addr)
-                  .call();
-                if (!level2Data.isExist) return null;
-
-                let level3Referrals: string[] = [];
-                try {
-                  level3Referrals = await contract.methods
-                    .getUserReferrals(level2Addr)
-                    .call();
-                } catch (err) {
-                  try {
-                    level3Referrals = await contract.methods
-                      .viewUserReferral(level2Addr)
-                      .call();
-                  } catch (err2) {
-                    level3Referrals = [];
-                  }
-                }
-
-                const level3Promises = level3Referrals.map(
-                  async (level3Addr: string) => {
-                    try {
-                      const level3Data = await contract.methods
-                        .users(level3Addr)
-                        .call();
-                      if (!level3Data.isExist) return null;
-                      return {
-                        address: level3Addr,
-                        id: Number(level3Data.id),
-                        referrals: [],
-                      };
-                    } catch (err) {
-                      console.warn(
-                        "Failed to fetch level 3 user:",
-                        level2Addr,
-                        err,
-                      );
-                      return null;
-                    }
-                  },
-                );
-
-                const level3Nodes = (await Promise.all(level3Promises)).filter(
-                  Boolean,
-                ) as GenealogyNode[];
-
-                return {
-                  address: level2Addr,
-                  id: Number(level2Data.id),
-                  referrals: level3Nodes,
-                };
-              } catch (err) {
-                console.warn("Failed to fetch level 2 user:", level2Addr, err);
-                return null;
-              }
-            },
-          );
-
-          const level2Nodes = (await Promise.all(level2Promises)).filter(
-            Boolean,
-          ) as GenealogyNode[];
-          return { address: addr, id: Number(data.id), referrals: level2Nodes };
+          return {
+            address: addr,
+            id: Number(data.id),
+            referrals: undefined // undefined means not yet fetched
+          };
         } catch (err) {
           console.warn("Failed to fetch level 1 user:", addr, err);
           return null;
@@ -1044,6 +968,57 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
     } catch (error) {
       console.error("Error fetching genealogy:", error);
       return { address: account || "", id: 0, referrals: [] };
+    }
+  };
+
+  // New function to fetch referrals for a specific user address
+  const fetchUserReferrals = async (address: string): Promise<GenealogyNode[]> => {
+    try {
+      if (!contract) return [];
+
+      // Get the user's referral addresses
+      let referralAddresses: string[] = [];
+      try {
+        referralAddresses = await contract.methods
+          .getUserReferrals(address)
+          .call();
+      } catch (err) {
+        console.warn("getUserReferrals failed, trying viewUserReferral", err);
+        try {
+          referralAddresses = await contract.methods
+            .viewUserReferral(address)
+            .call();
+        } catch (err2) {
+          console.warn("viewUserReferral also failed", err2);
+          return [];
+        }
+      }
+
+      // Fetch user data for each referral address
+      const referralPromises = referralAddresses.map(async (addr: string) => {
+        try {
+          const userData = await contract.methods.users(addr).call();
+          if (!userData.isExist) return null;
+
+          return {
+            address: addr,
+            id: Number(userData.id),
+            referrals: undefined // undefined means not yet fetched
+          };
+        } catch (err) {
+          console.warn("Failed to fetch user:", addr, err);
+          return null;
+        }
+      });
+
+      const referrals = (await Promise.all(referralPromises)).filter(
+        Boolean,
+      ) as GenealogyNode[];
+
+      return referrals;
+    } catch (error) {
+      console.error("Error fetching user referrals:", error);
+      return [];
     }
   };
 
@@ -1150,6 +1125,7 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
     getLevelDash,
     getIncomeDash,
     getGeneome,
+    fetchUserReferrals,
     getTeamBonus,
     getDirectRefIncome,
     extractReferralId,
