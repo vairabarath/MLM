@@ -83,7 +83,7 @@
     "type": "function",
     "inputs": [],
     "outputs": [
-      { "name": "", "type": "uint32", "internalType": "uint32" }
+      { "name": "", "type": "uint32", "value": "1", "internalType": "uint32" }
     ],
     "constant": true,
     "signature": "0xa4bb170d",
@@ -168,9 +168,8 @@
       { "name": "_referrerID", "type": "uint32", "internalType": "uint32" }
     ],
     "outputs": [],
-    "payable": true,
     "signature": "0x3b760c22",
-    "stateMutability": "payable"
+    "stateMutability": "nonpayable"
   },
   {
     "name": "tusers",
@@ -276,6 +275,16 @@
     "inputs": [{ "name": "wIndex", "type": "uint8", "internalType": "uint8" }],
     "outputs": [{ "name": "", "type": "bool", "internalType": "bool" }],
     "signature": "0x04f04e03",
+    "stateMutability": "nonpayable"
+  },
+  {
+    "name": "xtr",
+    "type": "function",
+    "inputs": [
+      { "name": "amount", "type": "uint256", "internalType": "uint256" }
+    ],
+    "outputs": [],
+    "signature": "0x6e679fe8",
     "stateMutability": "nonpayable"
   }
 ]

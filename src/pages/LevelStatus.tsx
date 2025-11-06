@@ -2,7 +2,7 @@
 import React from 'react';
 import { Loader2, AlertCircle, TrendingUp } from 'lucide-react';
 import { useMLMData } from '../hooks/useMLMData';
-import BNBValue from '../components/ui/BNBValue';
+import USDTValue from '../components/ui/USDTValue';
 
 const LevelStatus: React.FC = () => {
   const { data, loading, error } = useMLMData();
@@ -52,10 +52,9 @@ const LevelStatus: React.FC = () => {
               </div>
 
               <div className="mb-1">
-                <BNBValue 
-                  bnbAmount={typeof level.levelIncome === 'number' ? level.levelIncome : 0}
-                  bnbClassName="text-green-400 text-base sm:text-lg font-bold"
-                  usdClassName="text-gray-400 text-xs sm:text-sm block"
+                <USDTValue
+                  usdtAmount={typeof level.levelIncome === 'number' ? level.levelIncome : 0}
+                  className="text-green-400 text-base sm:text-lg font-bold"
                 />
               </div>
               <div className="text-gray-400 text-xs sm:text-sm">

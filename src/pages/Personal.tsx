@@ -9,7 +9,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useMLMData } from "../hooks/useMLMData";
-import BNBValue from "../components/ui/BNBValue";
+import USDTValue from "../components/ui/USDTValue";
 import Income from "../components/ui/Income";
 
 const Personal: React.FC = () => {
@@ -139,10 +139,10 @@ const Personal: React.FC = () => {
             <div className="bg-slate-800 rounded-lg p-4 hover:bg-slate-750 transition-colors">
                 <div className="md:flex justify-between item-center">
                   <p className="text-xl font-semibold text-white">Total Earnings:</p>
-                  <BNBValue
-                    bnbAmount={data.income.totalInc}
-                    bnbClassName="text-green-400 font-semibold text-lg"
-                    decimals={4}
+                  <USDTValue
+                    usdtAmount={data.income.totalInc}
+                    className="text-green-400 font-semibold text-lg"
+                    decimals={2}
                   />
                 </div>
             </div>

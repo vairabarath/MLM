@@ -12,6 +12,37 @@ import Swal from "sweetalert2";
 // Import blockchain configuration and ABI
 import contractABI from "../api/newmlm.json";
 
+// ERC20 ABI for USDT token
+const USDT_ABI = [
+  {
+    inputs: [
+      { name: "_owner", type: "address" },
+      { name: "_spender", type: "address" },
+    ],
+    name: "allowance",
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      { name: "_spender", type: "address" },
+      { name: "_value", type: "uint256" },
+    ],
+    name: "approve",
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "_who", type: "address" }],
+    name: "balanceOf",
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
 // MLM Data Interfaces
 interface PersonalData {
   userId: number;
@@ -49,9 +80,13 @@ interface Web3ContextType {
   account: string | null;
   isConnected: boolean;
   contract: any;
+  usdtContract: any;
   OPBNB_MAINNET_CHAIN_ID: number;
   OPBNB_MAINNET_HEX: string;
   OPBNB_MAINNET_NAME: string;
+  USDT_ADDRESS: string;
+  REG_FEE: string;
+  REG_FEE_DISPLAY: string;
   connectWallet: () => Promise<boolean>;
   checkUserRegistration: (address: string) => Promise<boolean>;
   registerUser: (referralId: string) => Promise<boolean>;
@@ -59,6 +94,9 @@ interface Web3ContextType {
   logout: () => void;
   walletProvider: any;
   setWalletProvider: (provider: any) => void;
+  // USDT/Approval functions
+  checkUSDTAllowance: () => Promise<string | null>;
+  approveUSDT: () => Promise<boolean>;
   // MLM specific functions
   getPersonalDash: () => Promise<PersonalData | null>;
   getTeamDevDash: () => Promise<TeamData | null>;
@@ -84,7 +122,10 @@ interface Web3ProviderProps {
 
 export const Web3Context = createContext<Web3ContextType | null>(null);
 
-const CONTRACT_ADDRESS = "0x6b9c86c809321ba5e4ef4d96f793e45f34828e62";
+const CONTRACT_ADDRESS = "0x7eFbd9A607732B551b7987CCbE9EF040Dcd2eAEb";
+const USDT_ADDRESS = "0x9e5AAC1Ba1a2e6aEd6b32689DFcF62A509Ca96f3"; // USDT on opBNB
+const REG_FEE = "45000000000000000000"; // 45 USDT (45 * 10^18)
+const REG_FEE_DISPLAY = "45 USDT";
 const OPBNB_MAINNET_CHAIN_ID = 204;
 const OPBNB_MAINNET_HEX = "0xCC";
 const OPBNB_MAINNET_NAME = "opBNB Mainnet";
@@ -94,6 +135,7 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
   const [account, setAccount] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [contract, setContract] = useState<any>(null);
+  const [usdtContract, setUsdtContract] = useState<any>(null);
   const [walletProvider, setWalletProvider] = useState<any>(null);
 
   useEffect(() => {
@@ -156,7 +198,7 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
           clearTimeout(timeoutId);
           window.removeEventListener(
             "eip6963:announceProvider",
-            handleProvider
+            handleProvider,
           );
           resolve(provider);
         }
@@ -290,35 +332,50 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
       try {
         const contractInstance = new web3Instance.eth.Contract(
           contractABI as any,
-          CONTRACT_ADDRESS
+          CONTRACT_ADDRESS,
         );
 
-        // Test the contract with a simple call
-        const code = await web3Instance.eth.getCode(CONTRACT_ADDRESS);
-        if (code === "0x") {
-          console.error("No contract found at address:", CONTRACT_ADDRESS);
-          toast.error("Contract not found at specified address");
-          return false;
-        }
-
-        // Try a simple contract call to verify ABI compatibility
+        // Test the contract with a simple call (with timeout to avoid hanging)
         try {
-          await contractInstance.methods.currUserID().call();
+          // Set a reasonable timeout for the call
+          const callPromise = contractInstance.methods.currUserID().call();
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Call timeout")), 5000)
+          );
+
+          await Promise.race([callPromise, timeoutPromise]);
           console.log("✅ Contract ABI verification successful");
         } catch (abiError) {
           console.warn(
-            "⚠️ Contract ABI verification failed, but continuing:",
-            abiError
+            "⚠️ Contract ABI verification warning (RPC issue or ABI mismatch):",
+            abiError,
           );
-          // Continue anyway - the contract exists, might be ABI version issue
+          // Continue anyway - the contract address is valid, RPC might be slow
         }
 
         setContract(contractInstance);
+        console.log("✅ MLM contract initialized successfully");
+
+        // Initialize USDT contract (non-blocking)
+        try {
+          const usdtContractInstance = new web3Instance.eth.Contract(
+            USDT_ABI as any,
+            USDT_ADDRESS,
+          );
+          setUsdtContract(usdtContractInstance);
+          console.log("✅ USDT contract initialized successfully");
+        } catch (usdtError) {
+          console.warn("⚠️ USDT contract initialization warning:", usdtError);
+          // Don't block the entire flow if USDT initialization fails
+          // It will be retried when needed via lazy initialization
+        }
+
         return true;
       } catch (contractError) {
         console.error("Contract initialization failed:", contractError);
-        toast.error("Failed to initialize contract");
-        return false;
+        // Don't toast error here - we'll proceed anyway since contract instance was created
+        console.warn("⚠️ Proceeding with contract despite initialization warning");
+        return true; // Changed from false to true - we have a contract instance
       }
     } catch (error) {
       console.error("Network check failed:", error);
@@ -396,79 +453,126 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
 
   const checkUserRegistration = async (address: string): Promise<boolean> => {
     try {
-      if (!contract) {
-        console.error("Contract not initialized");
-        return false;
-      }
-
       if (!address) {
         console.error("No address provided");
         return false;
       }
 
-      const userData = await contract.methods.users(address).call();
+      // Use contract or initialize on-demand
+      let contractInstance = contract;
+      if (!contractInstance || !web3) {
+        console.warn("Contract not initialized, creating on-demand");
+        if (!web3) return false;
 
-      const isRegistered = userData && userData.isExist === true;
+        contractInstance = new web3.eth.Contract(
+          contractABI as any,
+          CONTRACT_ADDRESS,
+        );
+      }
 
-      return isRegistered;
+      try {
+        const userData = await contractInstance.methods.users(address).call();
+        const isRegistered = userData && userData.isExist === true;
+        return isRegistered;
+      } catch (callError: any) {
+        // Handle RPC errors gracefully
+        if (callError.code === -32603 || callError.message?.includes("Internal JSON-RPC")) {
+          console.warn("⚠️ RPC error checking registration, retrying...", callError.message);
+
+          // Retry once after a short delay
+          await new Promise(resolve => setTimeout(resolve, 1000));
+
+          try {
+            const userData = await contractInstance.methods.users(address).call();
+            const isRegistered = userData && userData.isExist === true;
+            return isRegistered;
+          } catch (retryError) {
+            console.warn("⚠️ Retry failed, assuming user not registered:", retryError);
+            return false; // Assume not registered on RPC failure
+          }
+        }
+
+        // For execution reverted, user doesn't exist
+        if (callError.message?.includes("execution reverted")) {
+          return false;
+        }
+
+        throw callError;
+      }
     } catch (error) {
       console.error("Error checking user registration:", error);
-      if (
-        error instanceof Error &&
-        error.message.includes("execution reverted")
-      ) {
-        return false;
-      }
-      // For other errors (network issues, etc.), throw to let caller handle
-      throw error;
+      // Return false on any persistent error to allow user to proceed
+      return false;
     }
   };
 
   const registerUser = async (referralId: string): Promise<boolean> => {
     try {
-      if (!contract || !account || !web3) {
+      if (!account || !web3) {
         toast.error("Wallet not connected");
         return false;
       }
 
-      if (!referralId || referralId === "Not specified" || !/^\d+$/.test(referralId)) {
+      if (
+        !referralId ||
+        referralId === "Not specified" ||
+        !/^\d+$/.test(referralId)
+      ) {
         toast.error("Referral ID must be a valid number");
         return false;
       }
 
-      const referralIdNumber = parseInt(referralId)
+      // Use contract or create on-demand
+      let contractInstance = contract;
+      if (!contractInstance) {
+        contractInstance = new web3.eth.Contract(
+          contractABI as any,
+          CONTRACT_ADDRESS,
+        );
+        console.warn("Creating contract instance on-demand for registration");
+      }
 
-      const referrerAddress = await contract.methods.userList(referralIdNumber).call();
+      const referralIdNumber = parseInt(referralId);
+
+      const referrerAddress = await contractInstance.methods
+        .userList(referralIdNumber)
+        .call();
       if (referrerAddress === "0x0000000000000000000000000000000000000000") {
         toast.error("Invalid referral ID");
         return false;
       }
-      const referrerData = await contract.methods.users(referrerAddress).call();
+
+      const referrerData = await contractInstance.methods.users(referrerAddress).call();
       if (!referrerData.isExist) {
         toast.error("Referral ID does not exist");
         return false;
       }
 
-      const registrationFeeWei = "100000000000000000"; 
+      // Check USDT allowance before registration
+      const allowance = await checkUSDTAllowance();
+      const allowanceNumber = allowance ? parseFloat(allowance) : 0;
+
+      if (allowanceNumber < 45) {
+        toast.error("Insufficient USDT allowance. Please approve first.");
+        return false;
+      }
 
       const gasPrice = await web3.eth.getGasPrice();
       const bufferedGasPrice = Math.floor(Number(gasPrice) * 1.2);
 
-
-      const estimatedGas = await contract.methods
+      const estimatedGas = await contractInstance.methods
         .regUser(referralIdNumber)
         .estimateGas({
           from: account,
-          value: registrationFeeWei,
         });
 
-      await contract.methods.regUser(referralIdNumber).send({
+      const tx = await contractInstance.methods.regUser(referralIdNumber).send({
         from: account,
-        value: registrationFeeWei,
         gas: estimatedGas,
         gasPrice: bufferedGasPrice,
       });
 
+      console.log("✅ Registration successful:", tx.transactionHash);
       return true;
     } catch (error: any) {
       console.error("Registration error:", error);
@@ -510,8 +614,8 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
           params: [{ eth_accounts: {} }],
         });
 
-        // older wallets 
-        if (typeof walletProvider.disconnect === 'function') {
+        // older wallets
+        if (typeof walletProvider.disconnect === "function") {
           await walletProvider.disconnect();
         }
       } catch (error) {
@@ -524,9 +628,131 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
     setAccount(null);
     setIsConnected(false);
     setContract(null);
+    setUsdtContract(null);
     setWalletProvider(null); // Also clear the provider
     localStorage.removeItem("currentAccount");
     localStorage.removeItem("selectedWalletRdns");
+  };
+
+  const checkUSDTAllowance = async (): Promise<string | null> => {
+    try {
+      if (!account || !web3) {
+        console.error("Account or web3 not initialized");
+        return null;
+      }
+
+      // Initialize USDT contract if not already done
+      let usdtContractInstance = usdtContract;
+      if (!usdtContractInstance) {
+        usdtContractInstance = new web3.eth.Contract(
+          USDT_ABI as any,
+          USDT_ADDRESS,
+        );
+      }
+
+      try {
+        const allowance = await usdtContractInstance.methods
+          .allowance(account, CONTRACT_ADDRESS)
+          .call();
+
+        const allowanceInUSDT = web3.utils.fromWei(allowance.toString(), "ether");
+        console.log("Current USDT Allowance:", allowanceInUSDT);
+
+        return allowanceInUSDT;
+      } catch (callError: any) {
+        // Handle RPC errors gracefully
+        if (callError.code === -32603 || callError.message?.includes("Internal JSON-RPC")) {
+          console.warn("⚠️ RPC error checking allowance, retrying...");
+
+          // Retry once after a short delay
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+          try {
+            const allowance = await usdtContractInstance.methods
+              .allowance(account, CONTRACT_ADDRESS)
+              .call();
+
+            const allowanceInUSDT = web3.utils.fromWei(allowance.toString(), "ether");
+            console.log("Current USDT Allowance (retry):", allowanceInUSDT);
+
+            return allowanceInUSDT;
+          } catch (retryError) {
+            console.warn("⚠️ Allowance check retry failed:", retryError);
+            return "0"; // Return 0 allowance on RPC failure (safe default)
+          }
+        }
+
+        throw callError;
+      }
+    } catch (error) {
+      console.error("Error checking USDT allowance:", error);
+      // Don't show toast on every check - might happen in background
+      return "0"; // Return 0 allowance on error (safe default)
+    }
+  };
+
+  const approveUSDT = async (): Promise<boolean> => {
+    try {
+      if (!account || !web3) {
+        toast.error("Wallet not connected");
+        return false;
+      }
+
+      // Initialize USDT contract if not already done
+      let usdtContractInstance = usdtContract;
+      if (!usdtContractInstance) {
+        usdtContractInstance = new web3.eth.Contract(
+          USDT_ABI as any,
+          USDT_ADDRESS,
+        );
+      }
+
+      // Show loading toast
+      const loadingToastId = toast.loading("⏳ Waiting for approval...");
+
+      try {
+        const gasPrice = await web3.eth.getGasPrice();
+        const bufferedGasPrice = Math.floor(Number(gasPrice) * 1.2);
+
+        const estimatedGas = await usdtContractInstance.methods
+          .approve(CONTRACT_ADDRESS, REG_FEE)
+          .estimateGas({
+            from: account,
+          });
+
+        const tx = await usdtContractInstance.methods
+          .approve(CONTRACT_ADDRESS, REG_FEE)
+          .send({
+            from: account,
+            gas: estimatedGas,
+            gasPrice: bufferedGasPrice,
+          });
+
+        console.log("✅ USDT Approval successful:", tx.transactionHash);
+        toast.dismiss(loadingToastId);
+        toast.success("✅ USDT Approved! You can now register.");
+
+        // Update USDT contract state if it was just created
+        if (!usdtContract) {
+          setUsdtContract(usdtContractInstance);
+        }
+
+        return true;
+      } catch (sendError: any) {
+        toast.dismiss(loadingToastId);
+        if (sendError.code === 4001) {
+          toast.error("Approval rejected by user");
+        } else {
+          console.error("Approval failed:", sendError);
+          toast.error("❌ Approval failed. Please try again.");
+        }
+        return false;
+      }
+    } catch (error) {
+      console.error("Error in approveUSDT:", error);
+      toast.error("Failed to approve USDT");
+      return false;
+    }
   };
 
   // MLM Functions migrated from connection.js
@@ -601,7 +827,7 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
       }
 
       const totalInWei = Number(
-        web3.utils.fromWei(levelIncTotal.toString(), "ether")
+        web3.utils.fromWei(levelIncTotal.toString(), "ether"),
       );
       return { lvlData: levelData, lvlTotal: totalInWei };
     } catch (error) {
@@ -749,40 +975,60 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
 
                 let level3Referrals: string[] = [];
                 try {
-                  level3Referrals = await contract.methods.getUserReferrals(level2Addr).call();
+                  level3Referrals = await contract.methods
+                    .getUserReferrals(level2Addr)
+                    .call();
                 } catch (err) {
                   try {
-                    level3Referrals = await contract.methods.viewUserReferral(level2Addr).call();
+                    level3Referrals = await contract.methods
+                      .viewUserReferral(level2Addr)
+                      .call();
                   } catch (err2) {
                     level3Referrals = [];
                   }
                 }
 
-                const level3Promises = level3Referrals.map(async (level3Addr: string) => {
-                  try {
-                    const level3Data = await contract.methods.users(level3Addr).call();
-                    if (!level3Data.isExist) return null;
-                    return { address: level3Addr, id: Number(level3Data.id), referrals: [] };
-                  } catch (err) {
-                    console.warn("Failed to fetch level 3 user:", level2Addr, err)
-                    return null;
-                  }
-                });
+                const level3Promises = level3Referrals.map(
+                  async (level3Addr: string) => {
+                    try {
+                      const level3Data = await contract.methods
+                        .users(level3Addr)
+                        .call();
+                      if (!level3Data.isExist) return null;
+                      return {
+                        address: level3Addr,
+                        id: Number(level3Data.id),
+                        referrals: [],
+                      };
+                    } catch (err) {
+                      console.warn(
+                        "Failed to fetch level 3 user:",
+                        level2Addr,
+                        err,
+                      );
+                      return null;
+                    }
+                  },
+                );
 
                 const level3Nodes = (await Promise.all(level3Promises)).filter(
-                  Boolean
+                  Boolean,
                 ) as GenealogyNode[];
 
-                return { address: level2Addr, id: Number(level2Data.id), referrals: level3Nodes };
+                return {
+                  address: level2Addr,
+                  id: Number(level2Data.id),
+                  referrals: level3Nodes,
+                };
               } catch (err) {
                 console.warn("Failed to fetch level 2 user:", level2Addr, err);
                 return null;
               }
-            }
+            },
           );
 
           const level2Nodes = (await Promise.all(level2Promises)).filter(
-            Boolean
+            Boolean,
           ) as GenealogyNode[];
           return { address: addr, id: Number(data.id), referrals: level2Nodes };
         } catch (err) {
@@ -792,7 +1038,7 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
       });
 
       referralTree.referrals = (await Promise.all(level1Promises)).filter(
-        Boolean
+        Boolean,
       ) as GenealogyNode[];
       return referralTree;
     } catch (error) {
@@ -823,7 +1069,7 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
       // Check path segments
       const pathParts = urlObj.pathname.split("/");
       const refIndex = pathParts.findIndex((part) =>
-        ["ref", "referral", "r"].includes(part)
+        ["ref", "referral", "r"].includes(part),
       );
       if (refIndex !== -1 && pathParts[refIndex + 1]) {
         const cleanRef = pathParts[refIndex + 1].replace(/[^a-zA-Z0-9_-]/g, "");
@@ -844,15 +1090,15 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
   };
 
   const unixToIndianDate = (
-    unixTimestamp: number | string | bigint
+    unixTimestamp: number | string | bigint,
   ): string => {
     // Handle different types of input (number, string, or bigint)
     const timestamp =
       typeof unixTimestamp === "bigint"
         ? Number(unixTimestamp)
         : typeof unixTimestamp === "string"
-        ? parseInt(unixTimestamp, 10)
-        : unixTimestamp;
+          ? parseInt(unixTimestamp, 10)
+          : unixTimestamp;
 
     // Ensure we have a valid number
     if (isNaN(timestamp)) {
@@ -881,9 +1127,13 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
     account,
     isConnected,
     contract,
+    usdtContract,
     OPBNB_MAINNET_CHAIN_ID,
     OPBNB_MAINNET_HEX,
     OPBNB_MAINNET_NAME,
+    USDT_ADDRESS,
+    REG_FEE,
+    REG_FEE_DISPLAY,
     connectWallet,
     checkUserRegistration,
     registerUser,
@@ -891,6 +1141,9 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
     logout,
     walletProvider,
     setWalletProvider,
+    // USDT/Approval functions
+    checkUSDTAllowance,
+    approveUSDT,
     // MLM functions
     getPersonalDash,
     getTeamDevDash,

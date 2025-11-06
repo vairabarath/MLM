@@ -1,13 +1,10 @@
 import React, { useState } from "react";
 import {
   User as UserIcon,
-  Loader2,
-  AlertCircle,
   GitBranch,
   PlusSquare,
   MinusSquare,
 } from "lucide-react";
-import { useMLMData } from "../hooks/useMLMData";
 import ReferralLink from "../components/common/ReferralLink";
 
 // Define the User type based on the data structure
@@ -17,12 +14,56 @@ interface User {
   referrals?: User[];
 }
 
-
-
 const formatAddress = (address: string) => {
   return `${address.substring(0, 6)}...${address.substring(
     address.length - 4
   )}`;
+};
+
+// Generate random ethereum-like address
+const generateDemoAddress = (seed: number): string => {
+  const characters = "0123456789abcdef";
+  let address = "0x";
+  for (let i = 0; i < 40; i++) {
+    address += characters.charAt((seed * (i + 1)) % characters.length);
+  }
+  return address;
+};
+
+// Generate demo genealogy tree with 10 levels
+const generateDemoTree = (): User => {
+  let nodeId = 1;
+
+  const createNode = (level: number): User => {
+    const currentId = nodeId++;
+    // Generate nodes up to 10 levels, with single child per node for optimization
+    let referralCount = 0;
+    if (level < 10) {
+      referralCount = 1; // 1 referral per user to reach level 10
+    }
+    // Stop at level 10
+
+    const referrals: User[] = [];
+    for (let i = 0; i < referralCount; i++) {
+      referrals.push(createNode(level + 1));
+    }
+
+    return {
+      id: currentId,
+      address: generateDemoAddress(currentId),
+      referrals: referrals.length > 0 ? referrals : undefined,
+    };
+  };
+
+  return {
+    id: 0,
+    address: "0xYourDemoAddress1234567890",
+    referrals: [
+      createNode(1),
+      createNode(1),
+      createNode(1),
+    ],
+  };
 };
 
 // TreeNode component for rendering each node in the tree
@@ -32,7 +73,7 @@ const TreeNode: React.FC<{ user: User; level: number; isLast: boolean; parentHas
   isLast,
   parentHasButton = false,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(level < 2); // Expand only root level by default for performance
+  const [isExpanded, setIsExpanded] = useState(level < 2); // Expand only root level by default to avoid performance issues
   const hasChildren = user.referrals && user.referrals.length > 0;
 
   // Responsive spacing - smaller on mobile
@@ -52,18 +93,18 @@ const TreeNode: React.FC<{ user: User; level: number; isLast: boolean; parentHas
       {level > 0 && (
         <>
           {/* Vertical line connecting to parent's button */}
-          <div 
+          <div
             className={`absolute top-0 w-px bg-gray-400 ${
               isLast ? 'h-6' : 'h-full'
             }`}
-            style={{ 
-              left: `${(level - 1) * spacing.levelSpacing + spacing.lineOffset}px` 
+            style={{
+              left: `${(level - 1) * spacing.levelSpacing + spacing.lineOffset}px`
             }}
           />
           {/* Horizontal line to current node */}
-          <div 
+          <div
             className="absolute top-6 h-px bg-gray-400"
-            style={{ 
+            style={{
               left: `${(level - 1) * spacing.levelSpacing + spacing.lineOffset}px`,
               width: spacing.horizontalLineWidth
             }}
@@ -71,7 +112,7 @@ const TreeNode: React.FC<{ user: User; level: number; isLast: boolean; parentHas
         </>
       )}
 
-      <div 
+      <div
         className="flex items-center py-1"
         style={{ paddingLeft: level > 0 ? `${level * spacing.levelSpacing}px` : '0px' }}
       >
@@ -89,7 +130,7 @@ const TreeNode: React.FC<{ user: User; level: number; isLast: boolean; parentHas
             )}
           </button>
         )}
-        
+
         {/* User node - responsive sizing */}
         <div
           className={`flex items-center px-2 sm:px-3 py-1 sm:py-2 rounded-lg ${
@@ -101,19 +142,24 @@ const TreeNode: React.FC<{ user: User; level: number; isLast: boolean; parentHas
           <UserIcon size={14} className="mr-1 sm:mr-2 text-white flex-shrink-0 sm:w-4 sm:h-4" />
           <div className="min-w-0 flex-1">
             <span className="font-semibold text-white text-sm sm:text-base block truncate">
-              {level === 0 ? "You" : `ID: ${user.id}`}
+              {level === 0 ? "You (Demo)" : `ID: ${user.id}`}
             </span>
             {level > 0 && (
               <span className="text-xs font-mono text-gray-300 block truncate">
                 ({formatAddress(user.address)})
               </span>
             )}
+            {level > 0 && (
+              <span className="text-xs text-gray-400 block">
+                Level {level}
+              </span>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Children nodes - limit to 10 levels max */}
-      {isExpanded && hasChildren && level < 10 && (
+      {/* Children nodes */}
+      {isExpanded && hasChildren && (
         <div className="relative">
           {user.referrals?.map((child, index) => (
             <TreeNode
@@ -130,38 +176,18 @@ const TreeNode: React.FC<{ user: User; level: number; isLast: boolean; parentHas
   );
 };
 
-const GenealogyTree: React.FC = () => {
-  const { data, loading, error } = useMLMData();
-
-  // Use real data from smart contract
-  const genealogyData = data?.genealogy;
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-500 mx-auto mb-4" />
-          <p className="text-gray-400">Loading genealogy tree...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !data?.genealogy) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-4" />
-          <p className="text-gray-400">
-            Error: {error || "No genealogy data available"}
-          </p>
-        </div>
-      </div>
-    );
-  }
+const DemoGenealogyTree: React.FC = () => {
+  // Generate demo data once
+  const [genealogyData] = useState<User>(() => generateDemoTree());
 
   return (
     <div className="space-y-4 sm:space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="bg-yellow-900/30 border border-yellow-700 rounded-lg p-4">
+        <p className="text-yellow-300 text-sm sm:text-base">
+          <span className="font-semibold">Demo Mode:</span> This is a demonstration genealogy tree showing how your referral structure would look with 20 levels of data. This is not real blockchain data.
+        </p>
+      </div>
+
       <ReferralLink
         userId={genealogyData?.id || 0}
         userAddress={genealogyData?.address || ""}
@@ -172,7 +198,7 @@ const GenealogyTree: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 sm:mb-8 space-y-2 sm:space-y-0">
           <div className="flex items-center space-x-3">
             <GitBranch className="text-blue-400" size={20} />
-            <h2 className="text-white text-lg sm:text-xl font-bold">Genealogy Tree</h2>
+            <h2 className="text-white text-lg sm:text-xl font-bold">Demo Genealogy Tree</h2>
           </div>
           {genealogyData?.referrals && (
             <div className="flex sm:flex-row gap-6 md:gap-0 sm:items-center sm:space-x-4 text-sm text-gray-300 space-y-1 sm:space-y-0">
@@ -189,13 +215,40 @@ const GenealogyTree: React.FC = () => {
           ) : (
             <div className="text-center py-8">
               <UserIcon className="w-12 h-12 sm:w-16 sm:h-16 text-gray-500 mx-auto mb-4" />
-              <p className="text-gray-400 text-base sm:text-lg">No referrals yet</p>
-              <p className="text-gray-500 text-sm">
-                Start referring people to build your genealogy tree
-              </p>
+              <p className="text-gray-400 text-base sm:text-lg">No data available</p>
             </div>
           )}
         </div>
+      </div>
+
+      <div className="bg-slate-700 rounded-xl p-4 sm:p-6 shadow-lg text-white">
+        <h3 className="text-lg font-semibold mb-3">About This Demo</h3>
+        <ul className="space-y-2 text-sm text-gray-300">
+          <li className="flex items-start">
+            <span className="text-green-400 mr-2">✓</span>
+            <span>Displays 10 levels of genealogy data (~30 users)</span>
+          </li>
+          <li className="flex items-start">
+            <span className="text-green-400 mr-2">✓</span>
+            <span>Shows hierarchical structure with mock user IDs and addresses</span>
+          </li>
+          <li className="flex items-start">
+            <span className="text-green-400 mr-2">✓</span>
+            <span>Expandable/collapsible nodes for easy navigation</span>
+          </li>
+          <li className="flex items-start">
+            <span className="text-green-400 mr-2">✓</span>
+            <span>Level indicators showing depth in the tree</span>
+          </li>
+          <li className="flex items-start">
+            <span className="text-green-400 mr-2">✓</span>
+            <span>First level auto-expands, others collapsed by default for performance</span>
+          </li>
+          <li className="flex items-start">
+            <span className="text-blue-400 mr-2">→</span>
+            <span>Navigate to <strong>/dashboard/genealogy-tree</strong> to see your real genealogy once you have an active account</span>
+          </li>
+        </ul>
       </div>
     </div>
   );
@@ -212,4 +265,4 @@ const countTotalUsers = (user: User): number => {
   return count;
 };
 
-export default GenealogyTree;
+export default DemoGenealogyTree;

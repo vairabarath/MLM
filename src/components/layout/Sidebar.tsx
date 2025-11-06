@@ -29,6 +29,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       icon: GitBranch,
       path: "/dashboard/genealogy-tree",
     },
+    {
+      id: "demo-geno",
+      label: "Demo Genealogy",
+      icon: GitBranch,
+      path: "/dashboard/demo-geno",
+    },
   ];
 
   // Close sidebar on route change (mobile)

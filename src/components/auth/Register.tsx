@@ -22,7 +22,17 @@ const Register: React.FC = () => {
   const [referrerWallet, setReferrerWallet] = useState("Not specified");
   const [isLoading, setIsLoading] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
-  const { account, contract, registerUser } = useWeb3();
+  const [isApproving, setIsApproving] = useState(false);
+  const [usdtAllowance, setUsdtAllowance] = useState<string | null>(null);
+  const [isAllowanceApproved, setIsAllowanceApproved] = useState(false);
+  const {
+    account,
+    contract,
+    registerUser,
+    checkUSDTAllowance,
+    approveUSDT,
+    REG_FEE_DISPLAY,
+  } = useWeb3();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -48,7 +58,23 @@ const Register: React.FC = () => {
       // Process the referral information
       handleStoredReferralInfo(storedReferral);
     }
+
+    // Check USDT allowance on mount
+    checkAllowance();
   }, [account, navigate]);
+
+  // Function to check and update allowance
+  const checkAllowance = async () => {
+    if (!account) return;
+
+    const allowance = await checkUSDTAllowance();
+    setUsdtAllowance(allowance);
+
+    if (allowance) {
+      const allowanceNumber = parseFloat(allowance);
+      setIsAllowanceApproved(allowanceNumber >= 45);
+    }
+  };
 
   const formatAddress = (address: string) => {
     if (!address || address === "Not specified") return address;
@@ -175,6 +201,29 @@ const Register: React.FC = () => {
     }
   };
 
+  const handleApproveUSDT = async () => {
+    if (!account) {
+      toast.error("Wallet not connected");
+      return;
+    }
+
+    setIsApproving(true);
+
+    try {
+      const success = await approveUSDT();
+
+      if (success) {
+        // After successful approval, check allowance again
+        await checkAllowance();
+      }
+    } catch (error: any) {
+      console.error("Approval error:", error);
+      toast.error(`Approval failed: ${error.message || "Unknown error"}`);
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
   const handleRegister = async () => {
     if (referralId === "Not specified" || referralId === "0") {
       toast.error("Please provide a valid referral ID");
@@ -186,13 +235,18 @@ const Register: React.FC = () => {
       return;
     }
 
+    if (!isAllowanceApproved) {
+      toast.error("Please approve USDT allowance first");
+      return;
+    }
+
     const result = await Swal.fire({
       title: "Confirm Registration",
       html: `
         <div class="text-left">
           <p><strong>Wallet:</strong> ${formatAddress(account)}</p>
           <p><strong>Referrer ID:</strong> ${referralId}</p>
-          <p><strong>Registration Fee:</strong> 0.1 BNB (Test)</p>
+          <p><strong>Registration Fee:</strong> ${REG_FEE_DISPLAY}</p>
         </div>
       `,
       icon: "question",
@@ -340,21 +394,67 @@ const Register: React.FC = () => {
               </div>
             </div>
 
-            {/* Registration Fee */}
+            {/* Registration Fee and USDT Allowance */}
             <div className="bg-gray-700/30 rounded-lg p-4 mb-6">
-              <div className="flex items-center mb-3">
-                <Wallet className="w-5 h-5 text-blue-500 mr-2" />
-                <span className="text-gray-300">Registration Fee:</span>
-                <span className="text-white font-bold ml-2">0.1 BNB</span>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center">
+                  <Wallet className="w-5 h-5 text-blue-500 mr-2" />
+                  <span className="text-gray-300">Registration Fee:</span>
+                  <span className="text-white font-bold ml-2">{REG_FEE_DISPLAY}</span>
+                </div>
+              </div>
+
+              {/* Allowance Status */}
+              <div className="mt-4 pt-4 border-t border-gray-600">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-gray-300">Current USDT Allowance:</span>
+                  <span className="text-white font-mono">
+                    {usdtAllowance ? `${parseFloat(usdtAllowance).toFixed(2)} USDT` : "Loading..."}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isAllowanceApproved ? (
+                    <div className="flex items-center gap-1 text-green-400 text-sm">
+                      <Check className="w-4 h-4" />
+                      <span>Approved</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-red-400 text-sm">
+                      <X className="w-4 h-4" />
+                      <span>Not Approved</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Register Button */}
+            {/* Approve Button - Show if not approved */}
+            {!isAllowanceApproved && (
+              <button
+                onClick={handleApproveUSDT}
+                disabled={isApproving}
+                className="w-full py-4 px-6 rounded-lg font-medium transition-all duration-200 flex items-center justify-center mb-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isApproving ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                    Approving USDT...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-5 h-5 mr-2" />
+                    Approve USDT Allowance
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Register Button - Only enabled if approved */}
             <button
               onClick={handleRegister}
-              disabled={isRegistering || referralId === "Not specified"}
+              disabled={isRegistering || referralId === "Not specified" || !isAllowanceApproved}
               className={`w-full py-4 px-6 rounded-lg font-medium transition-all duration-200 flex items-center justify-center ${
-                referralId !== "Not specified" && !isRegistering
+                referralId !== "Not specified" && !isRegistering && isAllowanceApproved
                   ? "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl"
                   : "bg-gray-600 text-gray-400 cursor-not-allowed"
               }`}
@@ -372,9 +472,15 @@ const Register: React.FC = () => {
               )}
             </button>
 
+            {/* Error/Info Messages */}
             {referralId === "Not specified" && (
               <p className="text-center text-red-400 text-sm mt-2">
                 Please provide a valid referral URL to continue
+              </p>
+            )}
+            {!isAllowanceApproved && referralId !== "Not specified" && (
+              <p className="text-center text-yellow-400 text-sm mt-2">
+                Please approve USDT allowance to continue with registration
               </p>
             )}
           </div>

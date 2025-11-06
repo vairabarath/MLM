@@ -1,7 +1,7 @@
 // src/components/layout/Header.tsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Settings, User as UserIcon, LogOut, Wallet, Copy, TrendingUp, RefreshCw, Menu } from 'lucide-react';
+import { Bell, Settings, User as UserIcon, LogOut, Wallet, Copy, TrendingUp, Menu } from 'lucide-react';
 import { useWeb3 } from '../../hooks/useWeb3';
 import { usePrice } from '../../hooks/usePrice';
 import { toast } from 'react-toastify';
@@ -16,7 +16,7 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const { account, logout } = useWeb3();
-  const { bnbToUsd, isLoading: priceLoading, refreshPrice } = usePrice();
+  const { bnbToUsd, isLoading: priceLoading } = usePrice();
   const navigate = useNavigate();
 
   const formatAddress = (address: string) => {
@@ -79,7 +79,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         
         <div className="flex items-center space-x-2 sm:space-x-4">
           {/* BNB Price Indicator */}
-          <div className="hidden sm:flex items-center space-x-2 bg-gray-700/50 rounded-lg px-3 py-2">
+          {/* <div className="hidden sm:flex items-center space-x-2 bg-gray-700/50 rounded-lg px-3 py-2">
             <TrendingUp className="w-4 h-4 text-green-400" />
             <span className="text-sm font-semibold text-green-400">
               {priceLoading ? 'Loading...' : `$${bnbToUsd.toFixed(2)}`}
@@ -92,7 +92,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             >
               <RefreshCw className="w-3 h-3" />
             </button>
-          </div>
+          </div> */}
           
           {/* Mobile BNB Price - Compact */}
           <div className="sm:hidden flex items-center space-x-1 bg-gray-700/50 rounded-lg px-2 py-1">

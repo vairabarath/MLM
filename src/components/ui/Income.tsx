@@ -1,7 +1,7 @@
 import React from 'react';
 import { Loader2, AlertCircle, DollarSign } from 'lucide-react';
 import { useMLMData } from '../../hooks/useMLMData';
-import BNBValue from './BNBValue';
+import USDTValue from './USDTValue';
 
 const Income: React.FC = () => {
   const { data, loading, error } = useMLMData();
@@ -41,7 +41,7 @@ const Income: React.FC = () => {
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
               <span className="text-gray-300">Direct Referral Income:</span>
               <div className="text-left sm:text-right">
-                <BNBValue bnbAmount={data.income.dirRefInc} />
+                <USDTValue usdtAmount={data.income.dirRefInc} />
               </div>
             </div>
           </div>
@@ -49,7 +49,7 @@ const Income: React.FC = () => {
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
               <span className="text-gray-300">Team Development Bonus:</span>
               <div className="text-left sm:text-right">
-                <BNBValue bnbAmount={data.income.teamBon} />
+                <USDTValue usdtAmount={data.income.teamBon} />
               </div>
             </div>
           </div>
@@ -57,7 +57,7 @@ const Income: React.FC = () => {
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
               <span className="text-gray-300">Income from ALL Upgrades:</span>
               <div className="text-left sm:text-right">
-                <BNBValue bnbAmount={data.income.levelTot} />
+                <USDTValue usdtAmount={data.income.levelTot} />
               </div>
             </div>
           </div>
