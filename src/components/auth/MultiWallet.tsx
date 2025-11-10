@@ -183,7 +183,7 @@ const MultiWallet: React.FC = () => {
             Connect Your Wallet
           </h1>
           <p className="text-sm sm:text-base text-gray-400">
-            Choose a wallet to connect to SmartGenie
+            Choose a wallet to connect to Nectareous
           </p>
         </div>
 

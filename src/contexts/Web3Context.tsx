@@ -863,11 +863,11 @@ export const Web3Provider: React.FC<Web3ProviderProps> = ({ children }) => {
       const directReferralCount = Number(tUserData.directReferralCount);
 
       if (directReferralCount >= 1 && directReferralCount <= 3) {
-        incomeRate = 0.014;
+        incomeRate = 6.3;
       } else if (directReferralCount > 3) {
-        incomeRate = 0.018;
+        incomeRate = 8.1;
       } else {
-        return { dirRefCnt: 0, dirRefCalc: "0 X 0.014 = 0", dirRefIncome: 0 };
+        return { dirRefCnt: 0, dirRefCalc: "0 X 6.3 = 0", dirRefIncome: 0 };
       }
 
       const rawRefIncome = directReferralCount * incomeRate;
